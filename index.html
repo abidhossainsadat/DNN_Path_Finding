@@ -1,0 +1,1211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DQN Pathfinding & Neural Monitor - Interactive AI Visualization</title>
+    <!-- Load Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load TensorFlow.js for the neural network -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
+        
+        * {
+            font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0f172a 0%, #1a1f3a 50%, #16213e 100%);
+            min-height: 100vh;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(139, 92, 246, 0.08) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .content-wrapper {
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Glassmorphism effect */
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            border-radius: 16px;
+        }
+
+        .glass-panel-dark {
+            background: rgba(15, 23, 42, 0.5);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(148, 163, 184, 0.08);
+        }
+
+        /* Smooth animations */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% {
+                box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+            }
+            50% {
+                box-shadow: 0 0 40px rgba(59, 130, 246, 0.6);
+            }
+        }
+
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(0px);
+            }
+            50% {
+                transform: translateY(-10px);
+            }
+        }
+
+        @keyframes shimmer {
+            0% {
+                background-position: -1000px 0;
+            }
+            100% {
+                background-position: 1000px 0;
+            }
+        }
+
+        .animate-fade-in-up {
+            animation: fadeInUp 0.6s ease-out;
+        }
+
+        .animate-pulse-glow {
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+
+        .animate-float {
+            animation: float 3s ease-in-out infinite;
+        }
+
+        .heatmap-cell {
+            width: 100%;
+            padding-top: 100%;
+            transition: background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 4px;
+            position: relative;
+        }
+
+        .heatmap-cell::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: inherit;
+            filter: brightness(1.2);
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            border-radius: 4px;
+        }
+
+        .heatmap-cell:hover::before {
+            opacity: 0.3;
+        }
+
+        /* Button animations */
+        .btn-glow {
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .btn-glow::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+
+        .btn-glow:active::before {
+            width: 300px;
+            height: 300px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            box-shadow: 0 10px 25px rgba(59, 130, 246, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            box-shadow: 0 15px 40px rgba(59, 130, 246, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            box-shadow: 0 10px 25px rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            box-shadow: 0 15px 40px rgba(239, 68, 68, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+            box-shadow: 0 10px 25px rgba(107, 114, 128, 0.2);
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            box-shadow: 0 15px 40px rgba(107, 114, 128, 0.4);
+            transform: translateY(-2px);
+        }
+
+        /* Stat cards */
+        .stat-card {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            border-radius: 12px;
+            padding: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            border-color: rgba(59, 130, 246, 0.4);
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(139, 92, 246, 0.1) 100%);
+            transform: translateY(-2px);
+        }
+
+        .stat-value {
+            font-family: 'Space Mono', monospace;
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* Canvas styling */
+        canvas {
+            border-radius: 12px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        canvas:hover {
+            box-shadow: 0 25px 60px rgba(59, 130, 246, 0.2);
+        }
+
+        /* Progress bar animations */
+        .progress-bar {
+            position: relative;
+            overflow: hidden;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899);
+            background-size: 200% 100%;
+            animation: shimmer 2s infinite;
+            transition: width 0.3s ease;
+            border-radius: 8px;
+        }
+
+        /* Scroll animations */
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            position: relative;
+            padding-bottom: 0.5rem;
+        }
+
+        .section-title::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 2px;
+            width: 60px;
+            background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+            border-radius: 2px;
+        }
+
+        /* Responsive grid */
+        @media (max-width: 1024px) {
+            .content-wrapper {
+                padding: 1rem;
+            }
+        }
+
+        /* Loading skeleton */
+        .skeleton-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        /* Info badge */
+        .info-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(139, 92, 246, 0.2));
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 8px;
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+            color: #e0e7ff;
+            backdrop-filter: blur(10px);
+        }
+
+        /* Tooltip */
+        .tooltip-container {
+            position: relative;
+            display: inline-block;
+        }
+
+        .tooltip-text {
+            visibility: hidden;
+            background-color: rgba(15, 23, 42, 0.95);
+            color: #e0e7ff;
+            text-align: center;
+            border-radius: 8px;
+            padding: 0.5rem 1rem;
+            position: absolute;
+            z-index: 10;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -75px;
+            width: 150px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            font-size: 0.75rem;
+        }
+
+        .tooltip-container:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        /* Loading spinner */
+        .spinner {
+            border: 3px solid rgba(59, 130, 246, 0.2);
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="text-gray-100">
+
+    <div class="content-wrapper">
+        <div class="max-w-7xl mx-auto px-4 lg:px-8 py-6 lg:py-10">
+            
+            <!-- Header Section -->
+            <header class="text-center mb-10 animate-fade-in-up">
+                <div class="inline-block mb-4">
+                    <div class="info-badge">
+                        🤖 Deep Q-Network AI Visualization
+                    </div>
+                </div>
+                
+                <h1 class="text-5xl lg:text-6xl font-bold mb-3">
+                    <span class="bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                        DQN Pathfinding & Neural Monitor
+                    </span>
+                </h1>
+                
+                <p class="text-lg text-gray-400 max-w-2xl mx-auto leading-relaxed mb-4">
+                    Watch an AI agent learn to navigate obstacles in real-time. Experience the power of Deep Q-Learning with live neural network visualization and interactive controls.
+                </p>
+
+                <div class="flex flex-wrap justify-center gap-3">
+                    <span class="inline-flex items-center px-3 py-1 rounded-full bg-blue-500/20 border border-blue-500/30 text-sm text-blue-300">
+                        ⚡ Real-time Learning
+                    </span>
+                    <span class="inline-flex items-center px-3 py-1 rounded-full bg-purple-500/20 border border-purple-500/30 text-sm text-purple-300">
+                        🧠 Neural Visualization
+                    </span>
+                    <span class="inline-flex items-center px-3 py-1 rounded-full bg-pink-500/20 border border-pink-500/30 text-sm text-pink-300">
+                        🎮 Interactive UI
+                    </span>
+                </div>
+            </header>
+
+            <!-- Main content area: layout shifts from column on mobile to row on desktop -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in-up">
+
+                <!-- Left Column: Simulation Grid and Controls (2/3 width) -->
+                <div class="lg:col-span-2">
+                    <div class="glass-panel p-6">
+                        <!-- Canvas for the simulation grid -->
+                        <div class="mb-6">
+                            <h2 class="section-title mb-4">Environment Visualization</h2>
+                            <canvas id="gridCanvas" class="bg-gradient-to-br from-slate-100 to-slate-50 w-full rounded-xl shadow-2xl border border-slate-200/20 animate-pulse-glow"></canvas>
+                        </div>
+                        
+                        <!-- Controls -->
+                        <div class="space-y-4">
+                            <h3 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Simulation Controls</h3>
+                            
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <button id="startBtn" class="btn-glow btn-primary text-white font-bold py-3 px-6 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 relative z-10">
+                                    <span>▶</span>
+                                    <span>Start</span>
+                                </button>
+                                <button id="stopBtn" class="btn-glow btn-danger text-white font-bold py-3 px-6 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 relative z-10" disabled>
+                                    <span>⏹</span>
+                                    <span>Stop</span>
+                                </button>
+                                <button id="resetBtn" class="btn-glow btn-secondary text-white font-bold py-3 px-6 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 relative z-10">
+                                    <span>🔄</span>
+                                    <span>Reset</span>
+                                </button>
+                            </div>
+
+                            <!-- Speed Control -->
+                            <div class="bg-gradient-to-r from-slate-700/30 to-slate-600/20 rounded-lg p-4 border border-slate-600/20">
+                                <label for="speedSlider" class="block text-sm font-semibold text-gray-300 mb-3">
+                                    ⚙️ Simulation Speed
+                                    <span class="ml-2 inline-block px-3 py-1 bg-blue-500/30 border border-blue-400/50 rounded-full text-xs font-mono text-blue-300">
+                                        <span id="speedLabel">1</span>x
+                                    </span>
+                                </label>
+                                <input id="speedSlider" type="range" min="1" max="50" value="1" class="w-full h-3 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500">
+                                <p class="text-xs text-gray-500 mt-2">Logic steps per frame: <span id="speedValue">1</span></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Neural Network Monitor Panel (1/3 width) -->
+                <div class="lg:col-span-1">
+                    <div class="glass-panel p-6 sticky top-8 max-h-screen overflow-y-auto">
+                        <h2 class="section-title mb-5">Neural Monitor</h2>
+
+                        <!-- Stats Box -->
+                        <div class="space-y-3 mb-6">
+                            <h3 class="font-semibold text-sm uppercase tracking-wider text-gray-400">Simulation Stats</h3>
+                            
+                            <div class="grid grid-cols-2 gap-3">
+                                <div class="stat-card">
+                                    <div class="text-xs text-gray-400 uppercase tracking-wider">Episode</div>
+                                    <div class="stat-value" id="episode-stat">0</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="text-xs text-gray-400 uppercase tracking-wider">Steps</div>
+                                    <div class="stat-value" id="steps-stat">0</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="text-xs text-gray-400 uppercase tracking-wider">Reward</div>
+                                    <div class="stat-value text-base" id="reward-stat">0.0</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="text-xs text-gray-400 uppercase tracking-wider">Epsilon</div>
+                                    <div class="stat-value text-base" id="epsilon-stat">1.000</div>
+                                </div>
+                            </div>
+
+                            <div class="stat-card bg-red-500/10 border-red-500/20">
+                                <div class="text-xs text-gray-400 uppercase tracking-wider">Collisions</div>
+                                <div class="stat-value text-base" id="collisions-stat">0</div>
+                            </div>
+                        </div>
+
+                        <!-- Input State -->
+                        <div class="mb-6">
+                            <h3 class="font-semibold text-sm uppercase tracking-wider text-gray-400 mb-3">Agent State</h3>
+                            <div class="glass-panel-dark rounded-lg p-3 border border-slate-600/20">
+                                <div class="font-mono text-lg">
+                                    <span class="text-blue-400">pos</span>: (<span id="state-x" class="text-pink-400 font-bold">0</span>, <span id="state-y" class="text-pink-400 font-bold">0</span>)
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Q-Values -->
+                        <div class="mb-6">
+                            <h3 class="font-semibold text-sm uppercase tracking-wider text-gray-400 mb-3">Q-Values Output</h3>
+                            <div id="q-values-container" class="space-y-2 glass-panel-dark rounded-lg p-3">
+                                <!-- Q-Values will be dynamically inserted here -->
+                            </div>
+                        </div>
+
+                        <!-- Layer Activations -->
+                        <div>
+                            <h3 class="font-semibold text-sm uppercase tracking-wider text-gray-400 mb-4">Layer Activations</h3>
+                            
+                            <!-- Layer 1 -->
+                            <div class="mb-6">
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="font-medium text-blue-300">Hidden Layer 1</span>
+                                    <span class="text-xs px-2 py-1 bg-blue-500/30 rounded border border-blue-400/50 text-blue-300">
+                                        <span id="l1-active">0</span>/64 active
+                                    </span>
+                                </div>
+                                <div id="heatmap-l1" class="grid grid-cols-8 gap-1 bg-slate-900/50 rounded-lg p-2">
+                                    <!-- 64 heatmap cells will be injected here -->
+                                </div>
+                            </div>
+
+                            <!-- Layer 2 -->
+                            <div>
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="font-medium text-green-300">Hidden Layer 2</span>
+                                    <span class="text-xs px-2 py-1 bg-green-500/30 rounded border border-green-400/50 text-green-300">
+                                        <span id="l2-active">0</span>/64 active
+                                    </span>
+                                </div>
+                                <div id="heatmap-l2" class="grid grid-cols-8 gap-1 bg-slate-900/50 rounded-lg p-2">
+                                    <!-- 64 heatmap cells will be injected here -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Info footer -->
+                        <div class="mt-6 pt-4 border-t border-slate-600/20">
+                            <p class="text-xs text-gray-500 leading-relaxed">
+                                💡 The network learns to navigate from start (blue) to goal (red) while avoiding obstacles (gray). Watch the neural activations change as it learns!
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Legend Section -->
+            <div class="mt-10 animate-fade-in-up">
+                <div class="glass-panel p-6">
+                    <h2 class="section-title mb-4">Legend & Guide</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="flex items-start gap-3">
+                            <div class="w-8 h-8 rounded-full bg-blue-400 flex-shrink-0 mt-1"></div>
+                            <div>
+                                <p class="font-semibold text-sm">Agent</p>
+                                <p class="text-xs text-gray-400">The learner navigating the grid</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start gap-3">
+                            <div class="w-8 h-8 rounded-full bg-red-500 flex-shrink-0 mt-1"></div>
+                            <div>
+                                <p class="font-semibold text-sm">Goal</p>
+                                <p class="text-xs text-gray-400">Target destination</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start gap-3">
+                            <div class="w-8 h-8 bg-gray-600 rounded-md flex-shrink-0 mt-1"></div>
+                            <div>
+                                <p class="font-semibold text-sm">Obstacles</p>
+                                <p class="text-xs text-gray-400">Boundaries to avoid</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start gap-3">
+                            <div class="w-8 h-8 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 flex-shrink-0 mt-1"></div>
+                            <div>
+                                <p class="font-semibold text-sm">Path</p>
+                                <p class="text-xs text-gray-400">Agent's movement history</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // === HYPERPARAMETERS ===
+        const GRID_SIZE = 15;
+        const EPISODES = 2000;
+        const MAX_STEPS = 300;
+        const GAMMA = 0.95;
+        const EPSILON_START = 1.0;
+        const EPSILON_MIN = 0.01;
+        const EPSILON_DECAY = 0.995;
+        const LEARNING_RATE = 0.001;
+        const BATCH_SIZE = 32;
+        const MEMORY_SIZE = 10000;
+        const RANDOM_MOVE_PROB = 0.3;
+
+        const ACTIONS = [{x: 0, y: -1}, {x: 0, y: 1}, {x: -1, y: 0}, {x: 1, y: 0}];
+        const ACTION_NAMES = ['UP', 'DOWN', 'LEFT', 'RIGHT'];
+
+        // === DOM ELEMENTS ===
+        const canvas = document.getElementById('gridCanvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const speedSlider = document.getElementById('speedSlider');
+        const speedLabel = document.getElementById('speedLabel');
+        const speedValue = document.getElementById('speedValue');
+
+        const episodeStat = document.getElementById('episode-stat');
+        const stepsStat = document.getElementById('steps-stat');
+        const rewardStat = document.getElementById('reward-stat');
+        const epsilonStat = document.getElementById('epsilon-stat');
+        const collisionsStat = document.getElementById('collisions-stat');
+        const stateX = document.getElementById('state-x');
+        const stateY = document.getElementById('state-y');
+        const qValuesContainer = document.getElementById('q-values-container');
+        const heatmapL1 = document.getElementById('heatmap-l1');
+        const heatmapL2 = document.getElementById('heatmap-l2');
+
+        // === CANVAS & SIMULATION STATE ===
+        let CELL_SIZE;
+        let simulationRunning = false;
+        let animationFrameId;
+        let agent;
+        let env;
+        let currentEpisode = 0;
+        let currentStep = 0;
+        let totalReward = 0;
+        let state;
+        let logicStepsPerFrame = 1;
+        let lastFrameTime = 0;
+        const FRAME_INTERVAL = 1000 / 60;
+
+        // === DQN (using tf.js) ===
+        class DQN {
+            constructor(inputDim, outputDim) {
+                this.inputDim = inputDim;
+                this.outputDim = outputDim;
+                this.createModel();
+            }
+
+            createModel() {
+                const model = tf.sequential();
+                model.add(tf.layers.dense({
+                    inputShape: [this.inputDim],
+                    units: 64,
+                    activation: 'relu',
+                    name: 'layer1'
+                }));
+                model.add(tf.layers.dense({
+                    units: 64,
+                    activation: 'relu',
+                    name: 'layer2'
+                }));
+                model.add(tf.layers.dense({
+                    units: this.outputDim,
+                    activation: 'linear'
+                }));
+                model.compile({
+                    optimizer: tf.train.adam(LEARNING_RATE),
+                    loss: 'meanSquaredError'
+                });
+                this.model = model;
+
+                this.layer1Model = tf.model({
+                    inputs: this.model.inputs,
+                    outputs: this.model.getLayer('layer1').output
+                });
+                this.layer2Model = tf.model({
+                    inputs: this.model.inputs,
+                    outputs: this.model.getLayer('layer2').output
+                });
+            }
+
+            predict(state) {
+                return tf.tidy(() => {
+                    const tensor = tf.tensor2d([state]);
+                    return this.model.predict(tensor);
+                });
+            }
+
+            getActivations(state) {
+                return tf.tidy(() => {
+                    const tensor = tf.tensor2d([state]);
+                    const l1 = this.layer1Model.predict(tensor).dataSync();
+                    const l2 = this.layer2Model.predict(tensor).dataSync();
+                    return { l1_activations: Array.from(l1), l2_activations: Array.from(l2) };
+                });
+            }
+
+            async replay(memory, batchSize) {
+                if (memory.length < batchSize) {
+                    return;
+                }
+                const miniBatch = memory.sample(batchSize);
+                const states = miniBatch.map(e => e.state);
+                const nextStates = miniBatch.map(e => e.nextState);
+
+                let statesTensor, nextStatesTensor, currentQ, nextQ, maxNextQ, targetQTensor;
+
+                try {
+                    statesTensor = tf.tensor2d(states);
+                    nextStatesTensor = tf.tensor2d(nextStates);
+
+                    currentQ = this.model.predict(statesTensor);
+                    nextQ = this.model.predict(nextStatesTensor);
+                    
+                    maxNextQ = nextQ.max(1);
+                    
+                    const targetQData = await currentQ.data();
+                    const maxNextQData = await maxNextQ.data();
+                    const targetQ = Array.from(targetQData);
+
+                    for (let i = 0; i < miniBatch.length; i++) {
+                        const { action, reward, done } = miniBatch[i];
+                        const qIndex = i * this.outputDim + action;
+
+                        if (done) {
+                            targetQ[qIndex] = reward;
+                        } else {
+                            targetQ[qIndex] = reward + GAMMA * maxNextQData[i];
+                        }
+                    }
+
+                    targetQTensor = tf.tensor2d(targetQ, [batchSize, this.outputDim]);
+                    
+                    await this.model.fit(statesTensor, targetQTensor, {
+                        verbose: 0,
+                        epochs: 1
+                    });
+                
+                } finally {
+                    if (statesTensor) statesTensor.dispose();
+                    if (nextStatesTensor) nextStatesTensor.dispose();
+                    if (currentQ) currentQ.dispose();
+                    if (nextQ) nextQ.dispose();
+                    if (maxNextQ) maxNextQ.dispose();
+                    if (targetQTensor) targetQTensor.dispose();
+                }
+            }
+        }
+
+        // === REPLAY BUFFER ===
+        class ReplayBuffer {
+            constructor(maxSize) {
+                this.buffer = [];
+                this.maxSize = maxSize;
+                this.position = 0;
+            }
+
+            push(state, action, reward, nextState, done) {
+                if (this.buffer.length < this.maxSize) {
+                    this.buffer.push(null);
+                }
+                this.buffer[this.position] = { state, action, reward, nextState, done };
+                this.position = (this.position + 1) % this.maxSize;
+            }
+
+            sample(batchSize) {
+                const samples = [];
+                for (let i = 0; i < batchSize; i++) {
+                    samples.push(this.buffer[Math.floor(Math.random() * this.buffer.length)]);
+                }
+                return samples;
+            }
+
+            get length() {
+                return this.buffer.length;
+            }
+        }
+
+        // === AGENT ===
+        class Agent {
+            constructor() {
+                this.stateSize = 2;
+                this.actionSize = ACTIONS.length;
+                this.memory = new ReplayBuffer(MEMORY_SIZE);
+                this.epsilon = EPSILON_START;
+                this.dqn = new DQN(this.stateSize, this.actionSize);
+                this.isTraining = false;
+            }
+
+            act(state) {
+                if (Math.random() <= this.epsilon) {
+                    return Math.floor(Math.random() * this.actionSize);
+                }
+                return tf.tidy(() => {
+                    const qValues = this.dqn.predict(state);
+                    return qValues.argMax(1).dataSync()[0];
+                });
+            }
+
+            remember(state, action, reward, nextState, done) {
+                this.memory.push(state, action, reward, nextState, done);
+            }
+
+            async replay() {
+                if (this.isTraining || this.memory.length < BATCH_SIZE) return;
+
+                this.isTraining = true;
+                try {
+                    await this.dqn.replay(this.memory, BATCH_SIZE);
+                } catch (e) {
+                    console.error("Error during replay:", e);
+                } finally {
+                    this.isTraining = false;
+                }
+
+                if (this.epsilon > EPSILON_MIN) {
+                    this.epsilon *= EPSILON_DECAY;
+                }
+            }
+        }
+
+        // === ENVIRONMENT ===
+        class Environment {
+            constructor() {
+                this.gridSize = GRID_SIZE;
+                this.goalRadius = 1;
+                this.line = this.createLine();
+                this.reset();
+            }
+
+            createLine() {
+                let lineCells = [];
+                for (let i = 0; i < 8; i++) {
+                    lineCells.push({x: 3 + i, y: 6});
+                    lineCells.push({x: 3 + i, y: 7});
+                }
+                return lineCells;
+            }
+
+            reset() {
+                this.agentPos = {x: 7, y: 0};
+                this.goalPos = {x: this.gridSize - 7, y: this.gridSize - 1};
+                this.pathHistory = [this.agentPos];
+                this.collisionCount = 0;
+                return this.getState();
+            }
+
+            step(action) {
+                let nextPos = {
+                    x: this.agentPos.x + ACTIONS[action].x,
+                    y: this.agentPos.y + ACTIONS[action].y
+                };
+                nextPos.x = Math.max(0, Math.min(this.gridSize - 1, nextPos.x));
+                nextPos.y = Math.max(0, Math.min(this.gridSize - 1, nextPos.y));
+
+                let reward = 0;
+                let done = false;
+
+                if (this.line.some(cell => cell.x === nextPos.x && cell.y === nextPos.y)) {
+                    this.collisionCount++;
+                    if (Math.random() < RANDOM_MOVE_PROB) {
+                        let validMoveFound = false;
+                        for (let i = 0; i < 10; i++) {
+                            const randomAction = Math.floor(Math.random() * ACTIONS.length);
+                            let randomNextPos = {
+                                x: this.agentPos.x + ACTIONS[randomAction].x,
+                                y: this.agentPos.y + ACTIONS[randomAction].y
+                            };
+                            randomNextPos.x = Math.max(0, Math.min(this.gridSize - 1, randomNextPos.x));
+                            randomNextPos.y = Math.max(0, Math.min(this.gridSize - 1, randomNextPos.y));
+
+                            if (!this.line.some(cell => cell.x === randomNextPos.x && cell.y === randomNextPos.y)) {
+                                validMoveFound = true;
+                                nextPos = randomNextPos;
+                                reward = -1;
+                                break;
+                            }
+                        }
+                        if (!validMoveFound) {
+                            reward = 0;
+                            nextPos = this.agentPos;
+                        }
+                    } else {
+                        reward = 0;
+                        nextPos = this.agentPos;
+                    }
+                } else {
+                    reward = this.calculateReward(nextPos);
+                }
+
+                done = this.isInGoalArea(nextPos);
+                if (done) {
+                    reward += 2000;
+                }
+
+                this.agentPos = nextPos;
+                this.pathHistory.push(this.agentPos);
+                if (this.pathHistory.length > MAX_STEPS) {
+                    this.pathHistory.shift();
+                }
+                
+                return { nextState: this.getState(), reward, done };
+            }
+
+            getState() {
+                return [this.agentPos.x, this.agentPos.y];
+            }
+
+            calculateReward(position) {
+                let reward = -5;
+                const distanceToGoal = Math.sqrt(
+                    Math.pow(this.goalPos.x - position.x, 2) +
+                    Math.pow(this.goalPos.y - position.y, 2)
+                );
+                reward += -(distanceToGoal * distanceToGoal);
+                return reward;
+            }
+
+            isInGoalArea(position) {
+                for (let i = -this.goalRadius; i <= this.goalRadius; i++) {
+                    for (let j = -this.goalRadius; j <= this.goalRadius; j++) {
+                        if (position.x === this.goalPos.x + i && position.y === this.goalPos.y + j) {
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }
+        }
+
+        // === DRAWING FUNCTIONS ===
+
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            const size = container.clientWidth;
+            canvas.width = size;
+            canvas.height = size;
+            CELL_SIZE = canvas.width / GRID_SIZE;
+            drawSimulation();
+        }
+
+        function getGradientColor(index, totalLength) {
+            if (totalLength <= 1) return 'rgb(0, 200, 255)';
+            const ratio = index / (totalLength - 1);
+            const r = Math.floor(0 + ratio * 100);
+            const g = Math.floor(100 + ratio * 155);
+            const b = 255;
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+
+        function getActivationColor(value, maxVal) {
+            const intensity = Math.floor((Math.abs(value) / (maxVal + 0.001)) * 255);
+            const safeIntensity = Math.max(0, Math.min(255, intensity));
+            
+            if (safeIntensity < 128) {
+                return `rgb(0, ${safeIntensity * 2}, ${255 - safeIntensity})`;
+            } else {
+                return `rgb(${(safeIntensity - 128) * 2}, ${255 - (safeIntensity - 128)}, 0)`;
+            }
+        }
+
+        function drawSimulation() {
+            if (!env) return;
+
+            ctx.fillStyle = '#f8f9fa';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.strokeStyle = '#e9ecef';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= GRID_SIZE; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i * CELL_SIZE, 0);
+                ctx.lineTo(i * CELL_SIZE, canvas.height);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(0, i * CELL_SIZE);
+                ctx.lineTo(canvas.width, i * CELL_SIZE);
+                ctx.stroke();
+            }
+
+            const pathLength = env.pathHistory.length;
+            if (pathLength > 1) {
+                for (let idx = 0; idx < pathLength - 1; idx++) {
+                    const pos = env.pathHistory[idx];
+                    const color = getGradientColor(idx, pathLength);
+                    
+                    ctx.globalAlpha = 0.6;
+                    ctx.fillStyle = color;
+                    ctx.fillRect(pos.y * CELL_SIZE + 2, pos.x * CELL_SIZE + 2, CELL_SIZE - 4, CELL_SIZE - 4);
+                    
+                    if (idx < pathLength - 2) {
+                        const nextPos = env.pathHistory[idx + 1];
+                        ctx.globalAlpha = 1.0;
+                        ctx.strokeStyle = color;
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.moveTo(pos.y * CELL_SIZE + CELL_SIZE / 2, pos.x * CELL_SIZE + CELL_SIZE / 2);
+                        ctx.lineTo(nextPos.y * CELL_SIZE + CELL_SIZE / 2, nextPos.x * CELL_SIZE + CELL_SIZE / 2);
+                        ctx.stroke();
+                    }
+                }
+            }
+            ctx.globalAlpha = 1.0;
+
+            ctx.fillStyle = '#495057';
+            for (const cell of env.line) {
+                ctx.fillRect(cell.y * CELL_SIZE, cell.x * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+            }
+
+            const pulse = Math.abs(Math.sin(Date.now() / 300)) * 5;
+            ctx.fillStyle = '#e03131';
+            ctx.fillRect(env.goalPos.y * CELL_SIZE, env.goalPos.x * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+            ctx.fillStyle = '#ff8787';
+            ctx.beginPath();
+            ctx.arc(
+                env.goalPos.y * CELL_SIZE + CELL_SIZE / 2,
+                env.goalPos.x * CELL_SIZE + CELL_SIZE / 2,
+                CELL_SIZE / 3 + pulse, 0, 2 * Math.PI
+            );
+            ctx.fill();
+
+            const agentPos = env.agentPos;
+            ctx.fillStyle = '#00c4ff';
+            ctx.beginPath();
+            ctx.arc(
+                agentPos.y * CELL_SIZE + CELL_SIZE / 2,
+                agentPos.x * CELL_SIZE + CELL_SIZE / 2,
+                CELL_SIZE / 2.2, 0, 2 * Math.PI
+            );
+            ctx.fill();
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(
+                agentPos.y * CELL_SIZE + CELL_SIZE / 2,
+                agentPos.x * CELL_SIZE + CELL_SIZE / 2,
+                CELL_SIZE / 4, 0, 2 * Math.PI
+            );
+            ctx.fill();
+        }
+
+        // === UI UPDATE FUNCTIONS ===
+
+        function updateStatsPanel() {
+            episodeStat.textContent = currentEpisode;
+            stepsStat.textContent = currentStep;
+            rewardStat.textContent = totalReward.toFixed(1);
+            epsilonStat.textContent = agent.epsilon.toFixed(3);
+            collisionsStat.textContent = env.collisionCount;
+            stateX.textContent = state[0];
+            stateY.textContent = state[1];
+        }
+
+        function updateQValuesPanel() {
+            const qValues = tf.tidy(() => {
+                const qValuesTensor = agent.dqn.predict(state);
+                return qValuesTensor.dataSync();
+            });
+            
+            const maxQ = Math.max(...qValues.map(q => Math.abs(q))) + 0.001;
+            const bestAction = qValues.indexOf(Math.max(...qValues));
+
+            qValuesContainer.innerHTML = '';
+            qValues.forEach((q, i) => {
+                const barWidth = (Math.abs(q) / maxQ) * 100;
+                const barColor = q > 0 ? 'from-green-500 to-emerald-500' : 'from-red-500 to-rose-500';
+                const isBest = i === bestAction;
+
+                qValuesContainer.innerHTML += `
+                    <div class="text-sm ${isBest ? 'text-yellow-300 font-bold bg-yellow-500/10 p-2 rounded border border-yellow-500/20' : 'p-2 rounded'}">
+                        <div class="flex justify-between items-center mb-1">
+                            <span>${ACTION_NAMES[i]}</span>
+                            <span class="font-mono text-xs">${q.toFixed(2)}</span>
+                        </div>
+                        <div class="bg-gray-700/50 rounded-full h-2 overflow-hidden">
+                            <div class="bg-gradient-to-r ${barColor} h-2 rounded-full transition-all duration-300" style="width: ${barWidth}%"></div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function updateHeatmapsPanel() {
+            const { l1_activations, l2_activations } = agent.dqn.getActivations(state);
+
+            const l1_active = l1_activations.filter(a => a > 0.1).length;
+            const l2_active = l2_activations.filter(a => a > 0.1).length;
+
+            document.getElementById('l1-active').textContent = `${l1_active}`;
+            document.getElementById('l2-active').textContent = `${l2_active}`;
+
+            const maxL1 = Math.max(...l1_activations.map(a => Math.abs(a)));
+            const maxL2 = Math.max(...l2_activations.map(a => Math.abs(a)));
+
+            const l1_cells = heatmapL1.children;
+            const l2_cells = heatmapL2.children;
+
+            for (let i = 0; i < 64; i++) {
+                l1_cells[i].style.backgroundColor = getActivationColor(l1_activations[i], maxL1);
+                l2_cells[i].style.backgroundColor = getActivationColor(l2_activations[i], maxL2);
+            }
+        }
+        
+        function updateAllPanels() {
+            updateStatsPanel();
+            updateQValuesPanel();
+            updateHeatmapsPanel();
+        }
+
+        // === SIMULATION LOOP ===
+        
+        async function simulationStep() {
+            currentStep++;
+            const action = agent.act(state);
+            const { nextState, reward, done } = env.step(action);
+            totalReward += reward;
+            agent.remember(state, action, reward, nextState, done);
+            
+            state = nextState;
+
+            if (currentStep % 4 === 0) {
+                 await agent.replay();
+            }
+
+            if (done || currentStep >= MAX_STEPS) {
+                console.log(`Episode ${currentEpisode}: Finished in ${currentStep} steps. Reward: ${totalReward.toFixed(2)}. Epsilon: ${agent.epsilon.toFixed(3)}`);
+                currentEpisode++;
+                totalReward = 0;
+                currentStep = 0;
+                state = env.reset();
+            }
+        }
+
+        async function gameLoop(timestamp) {
+            if (!simulationRunning) return;
+
+            const deltaTime = timestamp - lastFrameTime;
+
+            if (deltaTime > FRAME_INTERVAL) {
+                lastFrameTime = timestamp - (deltaTime % FRAME_INTERVAL);
+
+                for(let i = 0; i < logicStepsPerFrame; i++) {
+                    if(simulationRunning) {
+                         await simulationStep();
+                    }
+                }
+                
+                drawSimulation();
+                updateAllPanels();
+            }
+
+            if (simulationRunning) {
+                animationFrameId = requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // === INITIALIZATION & EVENT LISTENERS ===
+        
+        function initHeatmapGrids() {
+            heatmapL1.innerHTML = '';
+            heatmapL2.innerHTML = '';
+            for (let i = 0; i < 64; i++) {
+                const cell1 = document.createElement('div');
+                cell1.className = 'heatmap-cell';
+                heatmapL1.appendChild(cell1);
+                
+                const cell2 = document.createElement('div');
+                cell2.className = 'heatmap-cell';
+                heatmapL2.appendChild(cell2);
+            }
+            qValuesContainer.innerHTML = ACTION_NAMES.map(name => `
+                <div class="text-sm p-2 rounded">
+                    <div class="flex justify-between items-center mb-1">
+                        <span>${name}</span>
+                        <span class="font-mono text-xs">0.00</span>
+                    </div>
+                    <div class="bg-gray-700/50 rounded-full h-2 overflow-hidden">
+                        <div class="bg-gray-500 h-2 rounded-full" style="width: 0%"></div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function resetSimulation() {
+            simulationRunning = false;
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+
+            agent = new Agent();
+            env = new Environment();
+            state = env.reset();
+            currentEpisode = 1;
+            currentStep = 0;
+            totalReward = 0;
+
+            drawSimulation();
+            updateAllPanels();
+
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            console.log("Simulation Reset.");
+        }
+
+        startBtn.addEventListener('click', () => {
+            if (simulationRunning) return;
+            simulationRunning = true;
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            lastFrameTime = performance.now();
+            animationFrameId = requestAnimationFrame(gameLoop);
+            console.log("Simulation Started.");
+        });
+
+        stopBtn.addEventListener('click', () => {
+            if (!simulationRunning) return;
+            simulationRunning = false;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+            console.log("Simulation Stopped.");
+        });
+
+        resetBtn.addEventListener('click', resetSimulation);
+
+        speedSlider.addEventListener('input', (e) => {
+            logicStepsPerFrame = parseInt(e.target.value);
+            speedLabel.textContent = logicStepsPerFrame;
+            speedValue.textContent = logicStepsPerFrame;
+        });
+
+        window.addEventListener('resize', resizeCanvas);
+
+        // Initial Setup
+        initHeatmapGrids();
+        resizeCanvas();
+        resetSimulation();
+        
+    </script>
+</body>
+</html>
